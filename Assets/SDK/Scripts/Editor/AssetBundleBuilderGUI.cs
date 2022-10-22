@@ -28,7 +28,6 @@ namespace ThunderRoad
         private Vector2 scrollPos;
         public static bool showManifest = false;
 
-
         [MenuItem("ThunderRoad (SDK)/Asset Bundle Builder")]
         public static void ShowWindow()
         {
@@ -181,7 +180,16 @@ namespace ThunderRoad
                         assetBundleGroup.exportAfterBuild = EditorGUILayout.Toggle(assetBundleGroup.exportAfterBuild, GUILayout.MaxWidth(20));
                         GUILayout.Label("Export on build");
 
-
+                        if (EditorUserBuildSettings.activeBuildTarget != BuildTarget.Android && GUILayout.Button("Export only catalog", GUILayout.Width(120)))
+                        {
+                            //ExportFolderName may be null if a build hasnt been done, but copying json should still be feasible
+                            if(string.IsNullOrEmpty(AssetBundleBuilder.exportFolderName)) AssetBundleBuilder.exportFolderName = assetBundleGroup.folderName;
+                            string catalogFullPath = Path.Combine(Directory.GetCurrentDirectory(), AssetBundleBuilder.catalogLocalPath);
+                            string destinationCatalogPath = GetWindowsAssetPath(assetBundleGroup);
+                            AssetBundleBuilder.CopyDirectory(catalogFullPath, destinationCatalogPath);
+                            Debug.Log($"Copied catalog folder {catalogFullPath} to {destinationCatalogPath}");
+                        }
+                        
                         GUILayout.Space(25);
                         if (GUILayout.Button("Export now", GUILayout.Width(120)))
                         {
