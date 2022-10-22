@@ -149,8 +149,14 @@ namespace ThunderRoad
                         GUILayout.Space(25);
                         assetBundleGroup.exportAfterBuild = EditorGUILayout.Toggle(assetBundleGroup.exportAfterBuild, GUILayout.MaxWidth(20));
                         GUILayout.Label("Export on build");
-
-
+                        
+                        if (GUILayout.Button("Open Catalog", GUILayout.Width(120)))
+                        {
+                            string catalogPath = Path.Combine(Directory.GetCurrentDirectory(), GameSettings.instance.catalogsEditorPath, assetBundleGroup.folderName);
+                            Directory.CreateDirectory(catalogPath);
+                            Application.OpenURL($"file://{catalogPath}");
+                            Debug.Log(catalogPath);
+                        }
 
                         GUILayout.Space(25);
                         if (GUILayout.Button("Export now", GUILayout.Width(120)))
