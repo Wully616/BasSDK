@@ -124,17 +124,20 @@ namespace ThunderRoad
                     Debug.Log("Copied folder " + folderName + " to " + Path.Combine(destFolder, folderName));
                 }
 
-                string jsondbPath = Path.Combine(destFolder, folderName + ".jsondb");
-                ZipFile zip = new ZipFile();
-
-                string[] files = Directory.GetFiles(catalogFullPath, "*.json", SearchOption.AllDirectories);
-                foreach (string file in files)
+                if (toDefault)
                 {
-                    zip.AddFile(file, Path.GetDirectoryName(FileManager.GetRelativePath(Path.Combine(catalogFullPath, folderName), file)));
-                }
+                    string jsondbPath = Path.Combine(destFolder, folderName + ".jsondb");
+                    ZipFile zip = new ZipFile();
 
-                zip.Save(jsondbPath);
-                Debug.Log("Zipped json " + folderName + " to " + jsondbPath);
+                    string[] files = Directory.GetFiles(catalogFullPath, "*.json", SearchOption.AllDirectories);
+                    foreach (string file in files)
+                    {
+                        zip.AddFile(file, Path.GetDirectoryName(FileManager.GetRelativePath(Path.Combine(catalogFullPath, folderName), file)));
+                    }
+
+                    zip.Save(jsondbPath);
+                    Debug.Log("Zipped json " + folderName + " to " + jsondbPath);
+                }
             }
         }
 

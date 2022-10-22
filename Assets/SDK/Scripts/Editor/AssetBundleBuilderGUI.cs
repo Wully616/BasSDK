@@ -8,13 +8,8 @@ using UnityEditor.AddressableAssets.Settings.GroupSchemas;
 using System.IO;
 using System.Collections.Generic;
 using System;
-using UnityEditor.Android;
 using Newtonsoft.Json;
 using System.Linq;
-using Ionic.Zip;
-using UnityEngine.Rendering;
-using System.Reflection;
-using UnityEditor.Build.Content;
 
 namespace ThunderRoad
 {
@@ -28,6 +23,7 @@ namespace ThunderRoad
         public static bool runGameAfterBuild;
         public static string runGameArguments;
         public static bool cleanDestination = true;
+        public static bool openFolderAfterExport = false;
         public static bool forceLinearFog = true;
         private Vector2 scrollPos;
         public static bool showManifest = false;
@@ -45,6 +41,7 @@ namespace ThunderRoad
             clearCache = EditorPrefs.GetBool("TRAB.ClearCache");
             runGameAfterBuild = EditorPrefs.GetBool("TRAB.RunGameAfterBuild");
             cleanDestination = EditorPrefs.GetBool("TRAB.CleanDestination");
+            openFolderAfterExport = EditorPrefs.GetBool("TRAB.OpenFolderAfterExport");
             runGameArguments = EditorPrefs.GetString("TRAB.RunGameArguments");
             forceLinearFog = EditorPrefs.GetBool("TRAB.ForceLinearFog");
 
@@ -190,6 +187,11 @@ namespace ThunderRoad
                         {
                             string assetsFolderPath = Path.Combine(Directory.GetCurrentDirectory(), GameSettings.instance.addressableEditorPath);
                             AssetBundleBuilder.CopyAssetsToBuild(assetsFolderPath, AssetBundleBuilder.exportFolderName, assetBundleGroup.isDefault, gamePath);
+                            
+                            if(EditorUserBuildSettings.activeBuildTarget != BuildTarget.Android && openFolderAfterExport)
+                            {
+                                Application.OpenURL($"file://{GetWindowsAssetPath(assetBundleGroup)}");
+                            }
                         }
                         GUILayout.EndHorizontal();
 
@@ -365,6 +367,12 @@ namespace ThunderRoad
                 EditorPrefs.SetBool("TRAB.CleanDestination", newCleanDestination);
                 cleanDestination = newCleanDestination;
             }
+            bool newOpenFolderAfterExport = GUILayout.Toggle(openFolderAfterExport, "Open folder after export", GUILayout.Width(150));
+            if (newOpenFolderAfterExport != openFolderAfterExport)
+            {
+                EditorPrefs.SetBool("TRAB.OpenFolderAfterExport", newOpenFolderAfterExport);
+                openFolderAfterExport = newOpenFolderAfterExport;
+            }
             GUILayout.EndHorizontal();
 
             if (runGameAfterBuild)
@@ -458,8 +466,7 @@ namespace ThunderRoad
                     string catalogFullPath = Path.Combine(Directory.GetCurrentDirectory(), AssetBundleBuilder.catalogLocalPath);
                     string destinationAssetsPath = "";
                     string destinationCatalogPath = "";
-                    if (assetBundleGroup.isDefault) destinationAssetsPath = destinationCatalogPath = Path.Combine(gamePath, gameName + "_Data/StreamingAssets/Default");
-                    else destinationAssetsPath = destinationCatalogPath = Path.Combine(gamePath, gameName + "_Data/StreamingAssets/Mods", AssetBundleBuilder.exportFolderName);
+                    destinationAssetsPath = destinationCatalogPath = GetWindowsAssetPath(assetBundleGroup);
 
                     // Create folders if needed
                     if (!File.Exists(destinationAssetsPath)) Directory.CreateDirectory(destinationAssetsPath);
@@ -494,6 +501,10 @@ namespace ThunderRoad
                         File.Copy(dllPath, destinationCatalogPath + "/" + AssetBundleBuilder.exportFolderName + ".dll", true);
                         Debug.Log("Copied dll " + dllPath + " to " + destinationCatalogPath);
                     }
+                    if(openFolderAfterExport)
+                    {
+                        Application.OpenURL($"file://{destinationAssetsPath}");
+                    }
                 }
                 else if (EditorUserBuildSettings.activeBuildTarget == BuildTarget.Android)
                 {
@@ -509,6 +520,12 @@ namespace ThunderRoad
             }
 
             Debug.Log("Export done");
+        }
+        public static string GetWindowsAssetPath(AssetBundleGroup assetBundleGroup)
+        {
+            string gameName = PlayerSettings.productName;
+            if (assetBundleGroup.isDefault) return Path.Combine(gamePath, $"{gameName}_Data/StreamingAssets/Default");
+            return Path.Combine(gamePath, $"{gameName}_Data/StreamingAssets/Mods", AssetBundleBuilder.exportFolderName);
         }
 
         public static void AndroidPushAssets(bool toDefault, string folderName)
