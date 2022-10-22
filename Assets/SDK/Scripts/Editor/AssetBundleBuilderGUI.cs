@@ -30,6 +30,7 @@ namespace ThunderRoad
         public static bool cleanDestination = true;
         public static bool forceLinearFog = true;
         private Vector2 scrollPos;
+        public static bool showManifest = false;
 
 
         [MenuItem("ThunderRoad (SDK)/Asset Bundle Builder")]
@@ -95,6 +96,27 @@ namespace ThunderRoad
                             {
                                 string output = AssetDatabase.RenameAsset(path, folderName);
 
+                                if (!assetBundleGroup.isDefault)
+                                {
+                                    string catalogPath = Path.Combine(Directory.GetCurrentDirectory(), GameSettings.instance.catalogsEditorPath, assetBundleGroup.folderName);
+                                    string newCatalogPath = Path.Combine(Directory.GetCurrentDirectory(), GameSettings.instance.catalogsEditorPath, folderName);
+                                    if (Directory.Exists(catalogPath))
+                                    {
+                                        Directory.Move(catalogPath, newCatalogPath);
+                                    }
+                                    else
+                                    {
+                                        Directory.CreateDirectory(newCatalogPath);
+                                    }
+
+                                    // update manifest mod name
+                                    //read manifest
+                                    ModData modData = ReadManifest(folderName);
+                                    modData.Name = folderName; //update the mod name to match new folder name
+                                    //Save mod data
+                                    CreateModManifest(modData);
+                                }
+                                
                                 if (!string.IsNullOrEmpty(output))
                                     Debug.LogWarning("Failed to rename! " + output);
                                 else
@@ -102,8 +124,6 @@ namespace ThunderRoad
                                     assetBundleGroup.folderName = folderName;
                                 }
                             }
-
-
                         }
 
                         if (assetBundleGroup.selected) 
@@ -115,21 +135,29 @@ namespace ThunderRoad
                         EditorGUI.EndDisabledGroup();
 
                         if (GUILayout.Button("X", GUILayout.MaxWidth(20)) && 
-                            EditorUtility.DisplayDialogComplex("Warning", "Are you sure you want to delete group '" + assetBundleGroup.folderName + "'?", "Yes", "Cancel", "No") == 0)
+                            EditorUtility.DisplayDialogComplex("Warning", $"Are you sure you want to delete group '{assetBundleGroup.folderName}'? Your Json files will be moved to '_deleted_{assetBundleGroup.folderName}'", "Yes", "Cancel", "No") == 0)
                         {
                             string path = AssetDatabase.GetAssetPath(assetBundleGroup);
                             int bundleIndex = assetBundleGroups.IndexOf(assetBundleGroup);
-
+                            
                             if (!string.IsNullOrEmpty(path) && AssetDatabase.MoveAssetToTrash(path))
                             {
                                 assetBundleGroups.RemoveAt(bundleIndex);
+                                if (!assetBundleGroup.isDefault)
+                                {
+                                    //Delete catalog
+                                    string catalogPath = Path.Combine(Directory.GetCurrentDirectory(), GameSettings.instance.catalogsEditorPath, assetBundleGroup.folderName);
+                                    string deletedCatalogPath = Path.Combine(Directory.GetCurrentDirectory(), GameSettings.instance.catalogsEditorPath, "_deleted_" + assetBundleGroup.folderName);
+                                    Debug.Log($"Deleting: {catalogPath} by moving it to {deletedCatalogPath}");
+                                    Directory.Move(catalogPath, deletedCatalogPath);
+                                }
                                 return; // Exit to redraw
                             }
                             else
                             {
                                 Debug.LogError("Failed to delete group!");
                             }
-
+                            
                         }
 
                         
@@ -150,13 +178,7 @@ namespace ThunderRoad
                         assetBundleGroup.exportAfterBuild = EditorGUILayout.Toggle(assetBundleGroup.exportAfterBuild, GUILayout.MaxWidth(20));
                         GUILayout.Label("Export on build");
                         
-                        if (GUILayout.Button("Open Catalog", GUILayout.Width(120)))
-                        {
-                            string catalogPath = Path.Combine(Directory.GetCurrentDirectory(), GameSettings.instance.catalogsEditorPath, assetBundleGroup.folderName);
-                            Directory.CreateDirectory(catalogPath);
-                            Application.OpenURL($"file://{catalogPath}");
-                            Debug.Log(catalogPath);
-                        }
+                        
 
                         GUILayout.Space(25);
                         if (GUILayout.Button("Export now", GUILayout.Width(120)))
@@ -166,7 +188,43 @@ namespace ThunderRoad
                         }
                         GUILayout.EndHorizontal();
 
+                        GUILayout.Space(8);
+                        if (!assetBundleGroup.isDefault)
+                        {
+                            GUILayout.BeginHorizontal();
 
+                            if (GUILayout.Button("Open Catalog", GUILayout.Width(120)))
+                            {
+                                string catalogPath = Path.Combine(Directory.GetCurrentDirectory(), GameSettings.instance.catalogsEditorPath, assetBundleGroup.folderName);
+                                Directory.CreateDirectory(catalogPath);
+                                Application.OpenURL($"file://{catalogPath}");
+                                Debug.Log(catalogPath);
+                            }
+
+                            GUILayout.EndHorizontal();
+                        }
+                        GUILayout.Space(8);
+                        if (!assetBundleGroup.isDefault)
+                        {
+                            showManifest = EditorGUILayout.Foldout(showManifest, "Manifest");
+                            if (showManifest)
+                            {
+                                /* Manifest update */
+                                ModData modData = ReadManifest(assetBundleGroup.folderName);
+
+                                EditorGUI.BeginChangeCheck();
+                                modData.Name = assetBundleGroup.folderName;
+                                modData.Description = EditorGUILayout.DelayedTextField("Description", modData.Description);
+                                modData.Author = EditorGUILayout.DelayedTextField("Author", modData.Author);
+                                modData.ModVersion = EditorGUILayout.DelayedTextField("ModVersion", modData.ModVersion);
+                                modData.GameVersion = EditorGUILayout.DelayedTextField("GameVersion", modData.GameVersion);
+                                if (EditorGUI.EndChangeCheck())
+                                {
+                                    //Save mod data
+                                    CreateModManifest(modData);
+                                }
+                            }
+                        }
                         GUILayout.Space(8);
                         GUILayout.Label("Addressable Groups", new GUIStyle("BoldLabel"));
 
@@ -230,6 +288,20 @@ namespace ThunderRoad
 
                     AssetDatabase.CreateAsset(newGroup, "Assets/SDK/AssetBundleGroups/NewMod.asset");
                     assetBundleGroups.Add(newGroup);
+
+                    if (!newGroup.isDefault)
+                    {
+                        CreateCatalogFolder(newGroup);
+                        ModData modData = new ModData {
+                            Name = newGroup.folderName,
+                            Description = "",
+                            Author = "",
+                            ModVersion = "1.0.0",
+                            GameVersion = "0.0.0.0"
+                        };
+
+                        CreateModManifest(modData);
+                    }
                 }
             }
 
@@ -298,6 +370,27 @@ namespace ThunderRoad
             GUILayout.EndHorizontal();
 
             EditorGUILayout.LabelField("", GUI.skin.horizontalSlider);
+        }
+        public static ModData ReadManifest(string folderName)
+        {
+            string manifestPath = Path.Combine(Directory.GetCurrentDirectory(), GameSettings.instance.catalogsEditorPath, folderName, "manifest.json");
+            if (File.Exists(manifestPath))
+            {
+                return JsonConvert.DeserializeObject<ModData>(File.ReadAllText(manifestPath));
+            }
+            return new ModData();
+        }
+        public static void CreateModManifest(ModData modData)
+        {
+            string manifestPath = Path.Combine(Directory.GetCurrentDirectory(), GameSettings.instance.catalogsEditorPath, modData.Name, "manifest.json");
+            File.WriteAllText(manifestPath, JsonConvert.SerializeObject(modData, Formatting.Indented));
+            Debug.Log($"Updated manifest at: {manifestPath}");
+            
+        }
+        public static void CreateCatalogFolder(AssetBundleGroup newGroup)
+        {
+            string catalogPath = Path.Combine(Directory.GetCurrentDirectory(), GameSettings.instance.catalogsEditorPath, newGroup.folderName);
+            Directory.CreateDirectory(catalogPath);
         }
 
         protected static void BuildSelected()
