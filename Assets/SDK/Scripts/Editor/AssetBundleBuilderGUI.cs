@@ -1,10 +1,7 @@
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.AddressableAssets;
 using UnityEditor.AddressableAssets.Settings;
 using UnityEditor.AddressableAssets;
-using UnityEditor.Build.Pipeline.Utilities;
-using UnityEditor.AddressableAssets.Settings.GroupSchemas;
 using System.IO;
 using System.Collections.Generic;
 using System;
@@ -182,21 +179,18 @@ namespace ThunderRoad
 
                         if (EditorUserBuildSettings.activeBuildTarget != BuildTarget.Android && GUILayout.Button("Export only catalog", GUILayout.Width(120)))
                         {
-                            //ExportFolderName may be null if a build hasnt been done, but copying json should still be feasible
-                            if(string.IsNullOrEmpty(AssetBundleBuilder.exportFolderName)) AssetBundleBuilder.exportFolderName = assetBundleGroup.folderName;
-                            string catalogFullPath = Path.Combine(Directory.GetCurrentDirectory(), AssetBundleBuilder.catalogLocalPath);
-                            string destinationCatalogPath = GetWindowsAssetPath(assetBundleGroup);
-                            AssetBundleBuilder.CopyDirectory(catalogFullPath, destinationCatalogPath);
-                            Debug.Log($"Copied catalog folder {catalogFullPath} to {destinationCatalogPath}");
+                            CopyCatalog(assetBundleGroup);
                         }
-                        
+
                         GUILayout.Space(25);
                         if (GUILayout.Button("Export now", GUILayout.Width(120)))
                         {
+                            if (string.IsNullOrEmpty(AssetBundleBuilder.exportFolderName)) AssetBundleBuilder.exportFolderName = assetBundleGroup.folderName;
                             string assetsFolderPath = Path.Combine(Directory.GetCurrentDirectory(), GameSettings.instance.addressableEditorPath);
                             AssetBundleBuilder.CopyAssetsToBuild(assetsFolderPath, AssetBundleBuilder.exportFolderName, assetBundleGroup.isDefault, gamePath);
-                            
-                            if(EditorUserBuildSettings.activeBuildTarget != BuildTarget.Android && openFolderAfterExport)
+                            CopyCatalog(assetBundleGroup);
+                            CopyDll(assetBundleGroup);
+                            if (EditorUserBuildSettings.activeBuildTarget != BuildTarget.Android && openFolderAfterExport)
                             {
                                 Application.OpenURL($"file://{GetWindowsAssetPath(assetBundleGroup)}");
                             }
@@ -215,25 +209,32 @@ namespace ThunderRoad
                                 Application.OpenURL($"file://{catalogPath}");
                                 Debug.Log(catalogPath);
                             }
-                            
+
                             if (GUILayout.Button("Create Project Mod Folder"))
                             {
-                                if(!AssetDatabase.IsValidFolder("Assets/Mods"))
+                                if (!AssetDatabase.IsValidFolder("Assets/Mods"))
                                 {
-                                    AssetDatabase.CreateFolder("Assets","Mods");
+                                    AssetDatabase.CreateFolder("Assets", "Mods");
                                 }
-                                if(!AssetDatabase.IsValidFolder($"Assets/Mods/{assetBundleGroup.folderName}"))
+                                if (!AssetDatabase.IsValidFolder($"Assets/Mods/{assetBundleGroup.folderName}"))
                                 {
-                                    AssetDatabase.CreateFolder("Assets/Mods",assetBundleGroup.folderName);
-                                    AssetDatabase.CreateFolder($"Assets/Mods/{assetBundleGroup.folderName}","Scripts");
-                                    AssetDatabase.CreateFolder($"Assets/Mods/{assetBundleGroup.folderName}","Scenes");
-                                    AssetDatabase.CreateFolder($"Assets/Mods/{assetBundleGroup.folderName}","Audio");
-                                    AssetDatabase.CreateFolder($"Assets/Mods/{assetBundleGroup.folderName}","Models");
-                                    AssetDatabase.CreateFolder($"Assets/Mods/{assetBundleGroup.folderName}","Prefabs");
-                                    AssetDatabase.CreateFolder($"Assets/Mods/{assetBundleGroup.folderName}","Shaders");
-                                    AssetDatabase.CreateFolder($"Assets/Mods/{assetBundleGroup.folderName}","Materials");
+                                    AssetDatabase.CreateFolder("Assets/Mods", assetBundleGroup.folderName);
+                                    AssetDatabase.CreateFolder($"Assets/Mods/{assetBundleGroup.folderName}", "Scripts");
+                                    AssetDatabase.CreateFolder($"Assets/Mods/{assetBundleGroup.folderName}", "Scenes");
+                                    AssetDatabase.CreateFolder($"Assets/Mods/{assetBundleGroup.folderName}", "Audio");
+                                    AssetDatabase.CreateFolder($"Assets/Mods/{assetBundleGroup.folderName}", "Models");
+                                    AssetDatabase.CreateFolder($"Assets/Mods/{assetBundleGroup.folderName}", "Prefabs");
+                                    AssetDatabase.CreateFolder($"Assets/Mods/{assetBundleGroup.folderName}", "Shaders");
+                                    AssetDatabase.CreateFolder($"Assets/Mods/{assetBundleGroup.folderName}", "Materials");
+                                    //This will create an assembly def and also reference the real ThunderRoad and ThunderRoad plugins dll in the game install folder
+                                    //So modders can write scripts as they would in an IDE directly referecing the DLLs - without conflicting with the SDK assemblies
+                                    string assemblyDef = "{" + $"	\"name\": \"{assetBundleGroup.folderName}\"," + "  \"precompiledReferences\": [\"ThunderRoad.PluginsReal.dll\",\"ThunderRoadReal.dll\"]," + "	\"overrideReferences\": true," + "	\"autoReferenced\": true" + "}";
+
+                                    File.WriteAllText($"Assets/Mods/{assetBundleGroup.folderName}/{assetBundleGroup.folderName}.asmdef", assemblyDef);
+                                    AssetDatabase.Refresh();
+
                                 }
-                                
+
                             }
 
                             GUILayout.EndHorizontal();
@@ -408,7 +409,31 @@ namespace ThunderRoad
             }
             GUILayout.EndHorizontal();
 
+            //This section should only appear for modders, where none of the assetBundles are "default"
+            if (assetBundleGroups.All(bundle => !bundle.isDefault))
+            {
+                GUILayout.BeginHorizontal();
+                if (EditorUserBuildSettings.activeBuildTarget != BuildTarget.Android && GUILayout.Button("Setup ThunderRoad Package"))
+                {
+                    SetupThunderRoadPackage();
+                }
+                GUILayout.EndHorizontal();
+            }
+
             EditorGUILayout.LabelField("", GUI.skin.horizontalSlider);
+        }
+
+        private void SetupThunderRoadPackage()
+        { }
+
+        public static void CopyCatalog(AssetBundleGroup assetBundleGroup)
+        {
+            //ExportFolderName may be null if a build hasnt been done, but copying json should still be feasible
+            if (string.IsNullOrEmpty(AssetBundleBuilder.exportFolderName)) AssetBundleBuilder.exportFolderName = assetBundleGroup.folderName;
+            string catalogFullPath = Path.Combine(Directory.GetCurrentDirectory(), AssetBundleBuilder.catalogLocalPath);
+            string destinationCatalogPath = GetWindowsAssetPath(assetBundleGroup);
+            AssetBundleBuilder.CopyDirectory(catalogFullPath, destinationCatalogPath);
+            Debug.Log($"Copied catalog folder {catalogFullPath} to {destinationCatalogPath}");
         }
         public static ModData ReadManifest(string folderName)
         {
@@ -502,14 +527,10 @@ namespace ThunderRoad
                     // Copy json catalog to destination path
                     AssetBundleBuilder.CopyDirectory(catalogFullPath, destinationCatalogPath);
                     Debug.Log("Copied catalog folder " + catalogFullPath + " to " + destinationCatalogPath);
-                    // Copy plugin dll if any
-                    string dllPath = Path.Combine("BuildStaging", "Plugins", AssetBundleBuilder.exportFolderName) + "/bin/Release/netstandard2.0/" + AssetBundleBuilder.exportFolderName + ".dll";
-                    if (File.Exists(dllPath))
-                    {
-                        File.Copy(dllPath, destinationCatalogPath + "/" + AssetBundleBuilder.exportFolderName + ".dll", true);
-                        Debug.Log("Copied dll " + dllPath + " to " + destinationCatalogPath);
-                    }
-                    if(openFolderAfterExport)
+
+                    CopyDll(assetBundleGroup);
+
+                    if (openFolderAfterExport)
                     {
                         Application.OpenURL($"file://{destinationAssetsPath}");
                     }
@@ -528,6 +549,36 @@ namespace ThunderRoad
             }
 
             Debug.Log("Export done");
+        }
+        public static void CopyDll(AssetBundleGroup assetBundleGroup)
+        {
+            string destinationCatalogPath = GetWindowsAssetPath(assetBundleGroup);
+            // Copy plugin dll if any
+            string dllPath = $"{Path.Combine("BuildStaging", "Plugins", AssetBundleBuilder.exportFolderName)}/bin/Release/netstandard2.0/{AssetBundleBuilder.exportFolderName}.dll";
+            if (File.Exists(dllPath))
+            {
+                File.Copy(dllPath, $"{destinationCatalogPath}/{AssetBundleBuilder.exportFolderName}.dll", true);
+                Debug.Log($"Copied dll {dllPath} to {destinationCatalogPath}");
+            }
+            else
+            {
+                //try to grab it from the scriptAssemblies directory if its a mod
+                if (!assetBundleGroup.isDefault)
+                {
+                    dllPath = $"{Path.Combine(Directory.GetCurrentDirectory(), "Library", "ScriptAssemblies")}/{AssetBundleBuilder.exportFolderName}.dll";
+                    if (File.Exists(dllPath))
+                    {
+                        File.Copy(dllPath, $"{destinationCatalogPath}/{AssetBundleBuilder.exportFolderName}.dll", true);
+                        Debug.Log($"Copied dll {dllPath} to {destinationCatalogPath}");
+                    }
+                    string pdbPath = $"{Path.Combine(Directory.GetCurrentDirectory(), "Library", "ScriptAssemblies")}/{AssetBundleBuilder.exportFolderName}.pdb";
+                    if (File.Exists(pdbPath))
+                    {
+                        File.Copy(pdbPath, $"{destinationCatalogPath}/{AssetBundleBuilder.exportFolderName}.pdb", true);
+                        Debug.Log($"Copied pdb {pdbPath} to {destinationCatalogPath}");
+                    }
+                }
+            }
         }
         public static string GetWindowsAssetPath(AssetBundleGroup assetBundleGroup)
         {
